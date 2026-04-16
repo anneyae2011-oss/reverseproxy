@@ -175,12 +175,13 @@ app.get('/api/proxy/v1/models', requireApiKey, (req, res) => {
 
 // OpenAI-compatible /v1/chat/completions — translates to deepseek web API format
 app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
+  console.log('[chat/completions] hit');
   const cfg = loadConfig();
   if (!cfg.proxyTarget) return res.status(503).json({ error: 'Proxy not configured' });
 
   // If target is deepseek chat web app, translate the request
   if (cfg.proxyTarget.includes('chat.deepseek.com')) {
-    const { messages, model, stream } = req.body;
+    const { messages, model } = req.body;
     const lastMessage = messages && messages.filter(m => m.role === 'user').pop();
     const prompt = lastMessage ? lastMessage.content : '';
 
@@ -197,7 +198,7 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
 
     try {
       const powResponse = await solvePoW(cfg.sessionKey);
-      console.log('[PoW]', powResponse);
+      console.log('[PoW] solved');
       const response = await fetch('https://chat.deepseek.com/api/v0/chat/completion', {
         method: 'POST',
         headers: {
@@ -218,7 +219,8 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
         body: JSON.stringify(deepseekBody)
       });
 
-      // DeepSeek returns SSE stream — pipe it as OpenAI-compatible SSE
+      console.log('[DeepSeek]', response.status);
+
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -232,7 +234,7 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete line
+        buffer = lines.pop();
 
         for (const line of lines) {
           if (!line.startsWith('data:')) continue;
@@ -241,7 +243,6 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
           try {
             const parsed = JSON.parse(data);
             const content = parsed?.choices?.[0]?.delta?.content
-              || parsed?.choices?.[0]?.message?.content
               || parsed?.data?.content
               || '';
             if (!content) continue;
@@ -260,19 +261,19 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
       res.write('data: [DONE]\n\n');
       res.end();
     } catch (e) {
+      console.error('[error]', e.message);
       res.status(502).json({ error: e.message });
     }
     return;
   }
 
-  // For other targets, just proxy normally
+  // For other targets, proxy normally
   if (!proxyMiddleware) return res.status(503).json({ error: 'Proxy not configured' });
   proxyMiddleware(req, res, () => {});
 });
-// POST /api/proxy
-// Headers: x-api-key: enyapeakshit
-// Body: { path: '/v1/messages', method: 'POST', headers: {}, body: {} }
-app.all('/api/proxy*', requireApiKey, (req, res, next) => {
+
+// Catch-all proxy for everything else under /api/proxy
+app.all('/api/proxy/*', requireApiKey, (req, res, next) => {
   if (!proxyMiddleware) {
     return res.status(503).json({ error: 'Proxy not configured. Set a target in the admin panel.' });
   }
