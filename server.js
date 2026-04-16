@@ -2,8 +2,10 @@ const { sha3_256 } = require('js-sha3');
 
 // Solve DeepSeek's proof-of-work challenge
 async function solvePoW(token) {
+  console.log('[PoW] fetching challenge...');
   const challengeRes = await fetch('https://chat.deepseek.com/api/v0/chat/create_pow_challenge', {
     method: 'POST',
+    signal: AbortSignal.timeout(10000),
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
@@ -18,6 +20,7 @@ async function solvePoW(token) {
     body: JSON.stringify({ target_path: '/api/v0/chat/completion' })
   });
   const { data } = await challengeRes.json();
+  console.log('[PoW] challenge received, difficulty:', data?.difficulty);
   const { algorithm, challenge, salt, difficulty } = data;
 
   // Brute force nonce (non-blocking)
