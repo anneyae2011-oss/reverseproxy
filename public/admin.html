@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Panel</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #111; color: #eee; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .card { background: #1e1e1e; border-radius: 10px; padding: 2rem; width: 100%; max-width: 480px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    h1 { margin-bottom: 1.5rem; font-size: 1.4rem; color: #fff; }
+    label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: #aaa; }
+    input { width: 100%; padding: 0.6rem 0.8rem; border-radius: 6px; border: 1px solid #333; background: #2a2a2a; color: #fff; font-size: 0.95rem; margin-bottom: 1rem; }
+    input:focus { outline: none; border-color: #555; }
+    button { width: 100%; padding: 0.7rem; border-radius: 6px; border: none; background: #4f46e5; color: #fff; font-size: 1rem; cursor: pointer; }
+    button:hover { background: #4338ca; }
+    .msg { margin-top: 1rem; font-size: 0.85rem; text-align: center; }
+    .msg.ok { color: #4ade80; }
+    .msg.err { color: #f87171; }
+    #loginSection, #configSection { display: none; }
+    #loginSection.active, #configSection.active { display: block; }
+    .logout { background: #374151; margin-top: 0.5rem; }
+    .logout:hover { background: #4b5563; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Admin Panel</h1>
+
+    <div id="loginSection" class="active">
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="Enter admin password" />
+      <button onclick="login()">Login</button>
+      <div id="loginMsg" class="msg"></div>
+    </div>
+
+    <div id="configSection">
+      <label for="sessionKey">Session Key</label>
+      <input type="text" id="sessionKey" placeholder="Your session key (e.g. sk-ant-...)" />
+
+      <label for="proxyTarget">Proxy Target URL</label>
+      <input type="text" id="proxyTarget" placeholder="https://api.example.com" />
+
+      <label for="proxyPath">Proxy Path (local)</label>
+      <input type="text" id="proxyPath" placeholder="/proxy" />
+
+      <button onclick="saveConfig()">Save</button>
+      <button class="logout" onclick="logout()">Logout</button>
+      <div id="configMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <script>
+    async function login() {
+      const password = document.getElementById('password').value;
+      const res = await fetch('/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('loginSection').classList.remove('active');
+        document.getElementById('configSection').classList.add('active');
+        loadConfig();
+      } else {
+        const msg = document.getElementById('loginMsg');
+        msg.textContent = 'Wrong password.';
+        msg.className = 'msg err';
+      }
+    }
+
+    async function loadConfig() {
+      const res = await fetch('/admin/config');
+      if (!res.ok) return;
+      const cfg = await res.json();
+      document.getElementById('sessionKey').value = cfg.sessionKey || '';
+      document.getElementById('proxyTarget').value = cfg.proxyTarget || '';
+      document.getElementById('proxyPath').value = cfg.proxyPath || '/proxy';
+    }
+
+    async function saveConfig() {
+      const sessionKey = document.getElementById('sessionKey').value;
+      const proxyTarget = document.getElementById('proxyTarget').value;
+      const proxyPath = document.getElementById('proxyPath').value;
+      const res = await fetch('/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionKey, proxyTarget, proxyPath })
+      });
+      const data = await res.json();
+      const msg = document.getElementById('configMsg');
+      if (data.success) {
+        msg.textContent = 'Saved successfully.';
+        msg.className = 'msg ok';
+      } else {
+        msg.textContent = 'Failed to save.';
+        msg.className = 'msg err';
+      }
+    }
+
+    async function logout() {
+      await fetch('/admin/logout', { method: 'POST' });
+      document.getElementById('configSection').classList.remove('active');
+      document.getElementById('loginSection').classList.add('active');
+    }
+
+    // Check if already logged in
+    fetch('/admin/config').then(r => {
+      if (r.ok) {
+        document.getElementById('loginSection').classList.remove('active');
+        document.getElementById('configSection').classList.add('active');
+        loadConfig();
+      }
+    });
+  </script>
+</body>
+</html>
