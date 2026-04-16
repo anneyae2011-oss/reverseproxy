@@ -20,15 +20,22 @@ async function solvePoW(token) {
   const { data } = await challengeRes.json();
   const { algorithm, challenge, salt, difficulty } = data;
 
-  // Brute force nonce
+  // Brute force nonce (non-blocking)
   let answer = 0;
-  while (true) {
-    const hash = sha3_256(`${challenge}${salt}${answer}`);
-    const leading = hash.match(/^0*/)[0].length * 4; // hex leading zeros to bits
-    if (leading >= difficulty) break;
-    answer++;
-  }
+  await new Promise(resolve => {
+    function step() {
+      for (let i = 0; i < 1000; i++) {
+        const hash = sha3_256(`${challenge}${salt}${answer}`);
+        const leading = hash.match(/^0*/)[0].length * 4;
+        if (leading >= difficulty) return resolve();
+        answer++;
+      }
+      setImmediate(step);
+    }
+    step();
+  });
 
+  console.log(`[PoW] solved answer=${answer}`);
   return JSON.stringify({ algorithm, challenge, salt, answer, signature: data.signature, target_path: '/api/v0/chat/completion' });
 }
 const express = require('express');
