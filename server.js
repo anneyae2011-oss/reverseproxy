@@ -190,6 +190,7 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
 
     try {
       const powResponse = await solvePoW(cfg.sessionKey);
+      console.log('[PoW]', powResponse);
       const response = await fetch('https://chat.deepseek.com/api/v0/chat/completion', {
         method: 'POST',
         headers: {
@@ -210,20 +211,47 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
         body: JSON.stringify(deepseekBody)
       });
 
-      const text = await response.text();
+      // DeepSeek returns SSE stream — pipe it as OpenAI-compatible SSE
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
 
-      // Wrap response in OpenAI-compatible format
-      res.json({
-        id: 'chatcmpl-proxy',
-        object: 'chat.completion',
-        created: Math.floor(Date.now() / 1000),
-        model: model || 'deepseek-chat',
-        choices: [{
-          index: 0,
-          message: { role: 'assistant', content: text },
-          finish_reason: 'stop'
-        }]
-      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim();
+          if (!data || data === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed?.choices?.[0]?.delta?.content
+              || parsed?.choices?.[0]?.message?.content
+              || parsed?.data?.content
+              || '';
+            if (!content) continue;
+            const chunk = {
+              id: 'chatcmpl-proxy',
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model: model || 'deepseek-chat',
+              choices: [{ index: 0, delta: { content }, finish_reason: null }]
+            };
+            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+          } catch (_) {}
+        }
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
     } catch (e) {
       res.status(502).json({ error: e.message });
     }
