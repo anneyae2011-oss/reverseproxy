@@ -8,6 +8,7 @@ const path = require('path');
 const app = express();
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const ADMIN_PASSWORD = 'enyapeakshit';
+const API_KEY = 'enyapeakshit';
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -69,6 +70,24 @@ app.post('/admin/config', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// API key middleware
+function requireApiKey(req, res, next) {
+  const key = req.headers['x-api-key'] || req.query.api_key;
+  if (key === API_KEY) return next();
+  res.status(401).json({ error: 'Invalid or missing API key' });
+}
+
+// Single unified API endpoint — all proxy requests go through here
+// POST /api/proxy
+// Headers: x-api-key: enyapeakshit
+// Body: { path: '/v1/messages', method: 'POST', headers: {}, body: {} }
+app.all('/api/proxy*', requireApiKey, (req, res, next) => {
+  if (!proxyMiddleware) {
+    return res.status(503).json({ error: 'Proxy not configured. Set a target in the admin panel.' });
+  }
+  proxyMiddleware(req, res, next);
+});
+
 // Dynamic proxy handler
 let proxyMiddleware = null;
 let currentProxyPath = '/proxy';
@@ -79,12 +98,15 @@ function setupProxy(cfg) {
   proxyMiddleware = createProxyMiddleware({
     target: cfg.proxyTarget,
     changeOrigin: true,
+    pathRewrite: { '^/api/proxy': '' },
     on: {
       proxyReq: (proxyReq) => {
         if (cfg.sessionKey) {
           proxyReq.setHeader('Cookie', `sessionKey=${cfg.sessionKey}`);
           proxyReq.setHeader('Authorization', `Bearer ${cfg.sessionKey}`);
         }
+        // Strip the internal API key before forwarding
+        proxyReq.removeHeader('x-api-key');
       }
     }
   });
@@ -92,7 +114,7 @@ function setupProxy(cfg) {
   currentProxyPath = cfg.proxyPath || '/proxy';
 }
 
-// Proxy route — dynamically handled
+// Legacy proxy route
 app.use((req, res, next) => {
   if (req.path.startsWith(currentProxyPath) && proxyMiddleware) {
     return proxyMiddleware(req, res, next);
