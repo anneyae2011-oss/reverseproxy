@@ -1,5 +1,37 @@
+const { sha3_256 } = require('js-sha3');
+
+// Solve DeepSeek's proof-of-work challenge
+async function solvePoW(token) {
+  const challengeRes = await fetch('https://chat.deepseek.com/api/v0/chat/create_pow_challenge', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+      'Referer': 'https://chat.deepseek.com/',
+      'Origin': 'https://chat.deepseek.com',
+      'x-app-version': '20241129.1',
+      'x-client-locale': 'en_US',
+      'x-client-platform': 'web',
+      'x-client-version': '1.8.0'
+    },
+    body: JSON.stringify({ target_path: '/api/v0/chat/completion' })
+  });
+  const { data } = await challengeRes.json();
+  const { algorithm, challenge, salt, difficulty } = data;
+
+  // Brute force nonce
+  let answer = 0;
+  while (true) {
+    const hash = sha3_256(`${challenge}${salt}${answer}`);
+    const leading = hash.match(/^0*/)[0].length * 4; // hex leading zeros to bits
+    if (leading >= difficulty) break;
+    answer++;
+  }
+
+  return JSON.stringify({ algorithm, challenge, salt, answer, signature: data.signature, target_path: '/api/v0/chat/completion' });
+}
 const express = require('express');
-const bodyParser = require('body-parser');
 const session = require('express-session');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const fs = require('fs');
@@ -156,17 +188,23 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
     };
 
     try {
+      const powResponse = await solvePoW(cfg.sessionKey);
       const response = await fetch('https://chat.deepseek.com/api/v0/chat/completion', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${cfg.sessionKey}`,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
           'Referer': 'https://chat.deepseek.com/',
           'Origin': 'https://chat.deepseek.com',
           'Accept': '*/*',
           'Accept-Language': 'en-US,en;q=0.9',
-          'x-app-version': '20241129.1'
+          'x-app-version': '20241129.1',
+          'x-client-locale': 'en_US',
+          'x-client-platform': 'web',
+          'x-client-version': '1.8.0',
+          'x-client-timezone-offset': '28800',
+          'x-ds-pow-response': powResponse
         },
         body: JSON.stringify(deepseekBody)
       });
