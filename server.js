@@ -161,7 +161,12 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
         headers: {
           'Content-Type': 'application/json',
           'Cookie': cfg.sessionKey,
-          'User-Agent': 'Mozilla/5.0'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Referer': 'https://chat.deepseek.com/',
+          'Origin': 'https://chat.deepseek.com',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'x-app-version': '20241129.1'
         },
         body: JSON.stringify(deepseekBody)
       });
