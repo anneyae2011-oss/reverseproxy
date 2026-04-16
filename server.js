@@ -32,6 +32,7 @@ async function solvePoW(token) {
   return JSON.stringify({ algorithm, challenge, salt, answer, signature: data.signature, target_path: '/api/v0/chat/completion' });
 }
 const express = require('express');
+const bodyParser = require('body-parser');
 const session = require('express-session');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const fs = require('fs');
