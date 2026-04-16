@@ -116,7 +116,9 @@ app.get('/admin/models', requireAuth, async (req, res) => {
 
 // API key middleware
 function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'] || req.query.api_key;
+  const key = req.headers['x-api-key']
+    || req.query.api_key
+    || (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '');
   if (key === API_KEY) return next();
   res.status(401).json({ error: 'Invalid or missing API key' });
 }
