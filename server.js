@@ -133,7 +133,63 @@ app.get('/api/proxy/v1/models', requireApiKey, (req, res) => {
   });
 });
 
-// Single unified API endpoint — all proxy requests go through here
+// OpenAI-compatible /v1/chat/completions — translates to deepseek web API format
+app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
+  const cfg = loadConfig();
+  if (!cfg.proxyTarget) return res.status(503).json({ error: 'Proxy not configured' });
+
+  // If target is deepseek chat web app, translate the request
+  if (cfg.proxyTarget.includes('chat.deepseek.com')) {
+    const { messages, model, stream } = req.body;
+    const lastMessage = messages && messages.filter(m => m.role === 'user').pop();
+    const prompt = lastMessage ? lastMessage.content : '';
+
+    const deepseekBody = {
+      chat_session_id: require('crypto').randomUUID(),
+      parent_message_id: null,
+      prompt,
+      ref_file_ids: [],
+      search_enabled: false,
+      thinking_enabled: model === 'deepseek-reasoner',
+      model_type: model === 'deepseek-reasoner' ? 'reasoner' : 'default',
+      preempt: false
+    };
+
+    try {
+      const response = await fetch('https://chat.deepseek.com/api/v0/chat/completion', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': cfg.sessionKey,
+          'User-Agent': 'Mozilla/5.0'
+        },
+        body: JSON.stringify(deepseekBody)
+      });
+
+      const text = await response.text();
+
+      // Wrap response in OpenAI-compatible format
+      res.json({
+        id: 'chatcmpl-proxy',
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: model || 'deepseek-chat',
+        choices: [{
+          index: 0,
+          message: { role: 'assistant', content: text },
+          finish_reason: 'stop'
+        }]
+      });
+    } catch (e) {
+      res.status(502).json({ error: e.message });
+    }
+    return;
+  }
+
+  // For other targets, just proxy normally
+  if (!proxyMiddleware) return res.status(503).json({ error: 'Proxy not configured' });
+  proxyMiddleware(req, res, () => {});
+});
 // POST /api/proxy
 // Headers: x-api-key: enyapeakshit
 // Body: { path: '/v1/messages', method: 'POST', headers: {}, body: {} }
