@@ -247,6 +247,7 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
           if (!data || data === '[DONE]') continue;
           try {
             const parsed = JSON.parse(data);
+            console.log('[DS chunk]', JSON.stringify(parsed).slice(0, 200));
             const content = parsed?.choices?.[0]?.delta?.content
               || parsed?.data?.content
               || '';
