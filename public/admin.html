@@ -21,6 +21,13 @@
     #loginSection.active, #configSection.active { display: block; }
     .logout { background: #374151; margin-top: 0.5rem; }
     .logout:hover { background: #4b5563; }
+    #modelsBox { margin-top: 1.2rem; display: none; }
+    #modelsBox h2 { font-size: 0.9rem; color: #aaa; margin-bottom: 0.5rem; }
+    #modelsList { list-style: none; max-height: 180px; overflow-y: auto; background: #2a2a2a; border-radius: 6px; padding: 0.5rem; }
+    #modelsList li { font-size: 0.82rem; padding: 0.3rem 0.4rem; border-bottom: 1px solid #333; color: #ccc; }
+    #modelsList li:last-child { border-bottom: none; }
+    .refresh-btn { background: #1d4ed8; margin-top: 0.5rem; font-size: 0.85rem; padding: 0.5rem; }
+    .refresh-btn:hover { background: #1e40af; }
   </style>
 </head>
 <body>
@@ -47,6 +54,12 @@
       <button onclick="saveConfig()">Save</button>
       <button class="logout" onclick="logout()">Logout</button>
       <div id="configMsg" class="msg"></div>
+
+      <div id="modelsBox">
+        <h2>Available Models</h2>
+        <ul id="modelsList"></ul>
+        <button class="refresh-btn" onclick="fetchModels()">Refresh Models</button>
+      </div>
     </div>
   </div>
 
@@ -77,6 +90,7 @@
       document.getElementById('sessionKey').value = cfg.sessionKey || '';
       document.getElementById('proxyTarget').value = cfg.proxyTarget || '';
       document.getElementById('proxyPath').value = cfg.proxyPath || '/proxy';
+      if (cfg.proxyTarget) fetchModels();
     }
 
     async function saveConfig() {
@@ -93,9 +107,28 @@
       if (data.success) {
         msg.textContent = 'Saved successfully.';
         msg.className = 'msg ok';
+        fetchModels();
       } else {
         msg.textContent = 'Failed to save.';
         msg.className = 'msg err';
+      }
+    }
+
+    async function fetchModels() {
+      const box = document.getElementById('modelsBox');
+      const list = document.getElementById('modelsList');
+      list.innerHTML = '<li>Loading...</li>';
+      box.style.display = 'block';
+      try {
+        const res = await fetch('/admin/models');
+        const data = await res.json();
+        if (data.models && data.models.length > 0) {
+          list.innerHTML = data.models.map(m => `<li>${m}</li>`).join('');
+        } else {
+          list.innerHTML = `<li style="color:#f87171">${data.error || 'No models found'}</li>`;
+        }
+      } catch {
+        list.innerHTML = '<li style="color:#f87171">Failed to fetch models</li>';
       }
     }
 

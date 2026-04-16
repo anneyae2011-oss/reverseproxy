@@ -63,11 +63,43 @@ app.post('/admin/config', requireAuth, (req, res) => {
   const { sessionKey, proxyTarget, proxyPath } = req.body;
   const cfg = { sessionKey, proxyTarget, proxyPath: proxyPath || '/proxy' };
   saveConfig(cfg);
-
-  // Re-register proxy with new config
   setupProxy(cfg);
-
   res.json({ success: true });
+});
+
+// Fetch models from the configured proxy target
+app.get('/admin/models', requireAuth, async (req, res) => {
+  const cfg = loadConfig();
+  if (!cfg.proxyTarget) return res.status(400).json({ error: 'No proxy target configured' });
+
+  // Common model list endpoints to try in order
+  const endpoints = ['/v1/models', '/api/v1/models', '/models'];
+
+  for (const ep of endpoints) {
+    try {
+      const url = cfg.proxyTarget.replace(/\/$/, '') + ep;
+      const headers = { 'Content-Type': 'application/json' };
+      if (cfg.sessionKey) {
+        headers['Authorization'] = `Bearer ${cfg.sessionKey}`;
+        headers['Cookie'] = `sessionKey=${cfg.sessionKey}`;
+      }
+      const response = await fetch(url, { headers });
+      if (!response.ok) continue;
+      const data = await response.json();
+
+      // Normalize: extract model list from common response shapes
+      const models = data.data || data.models || data || [];
+      const list = Array.isArray(models)
+        ? models.map(m => (typeof m === 'string' ? m : m.id || m.name || JSON.stringify(m)))
+        : Object.keys(models);
+
+      return res.json({ models: list, endpoint: ep });
+    } catch (_) {
+      continue;
+    }
+  }
+
+  res.status(502).json({ error: 'Could not fetch models from proxy target' });
 });
 
 // API key middleware
