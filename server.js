@@ -67,32 +67,44 @@ app.post('/admin/config', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// Known static model lists for web-app targets that don't expose a models API
+const STATIC_MODELS = {
+  'chat.deepseek.com': [
+    'deepseek-chat',
+    'deepseek-reasoner',
+  ],
+  'arena.ai': ['(configure via arena.ai UI)']
+};
+
 // Fetch models from the configured proxy target
 app.get('/admin/models', requireAuth, async (req, res) => {
   const cfg = loadConfig();
   if (!cfg.proxyTarget) return res.status(400).json({ error: 'No proxy target configured' });
 
-  // Common model list endpoints to try in order
-  const endpoints = ['/v1/models', '/api/v1/models', '/models'];
+  // Check if target matches a known static list
+  for (const [host, models] of Object.entries(STATIC_MODELS)) {
+    if (cfg.proxyTarget.includes(host)) {
+      return res.json({ models, static: true });
+    }
+  }
 
+  // Otherwise try common API endpoints
+  const endpoints = ['/v1/models', '/api/v1/models', '/models'];
   for (const ep of endpoints) {
     try {
       const url = cfg.proxyTarget.replace(/\/$/, '') + ep;
       const headers = { 'Content-Type': 'application/json' };
       if (cfg.sessionKey) {
         headers['Authorization'] = `Bearer ${cfg.sessionKey}`;
-        headers['Cookie'] = `sessionKey=${cfg.sessionKey}`;
+        headers['Cookie'] = cfg.sessionKey;
       }
       const response = await fetch(url, { headers });
       if (!response.ok) continue;
       const data = await response.json();
-
-      // Normalize: extract model list from common response shapes
       const models = data.data || data.models || data || [];
       const list = Array.isArray(models)
         ? models.map(m => (typeof m === 'string' ? m : m.id || m.name || JSON.stringify(m)))
         : Object.keys(models);
-
       return res.json({ models: list, endpoint: ep });
     } catch (_) {
       continue;
@@ -134,10 +146,10 @@ function setupProxy(cfg) {
     on: {
       proxyReq: (proxyReq) => {
         if (cfg.sessionKey) {
-          proxyReq.setHeader('Cookie', `sessionKey=${cfg.sessionKey}`);
+          // Send as both cookie and bearer — works for both API keys and session cookies
+          proxyReq.setHeader('Cookie', cfg.sessionKey);
           proxyReq.setHeader('Authorization', `Bearer ${cfg.sessionKey}`);
         }
-        // Strip the internal API key before forwarding
         proxyReq.removeHeader('x-api-key');
       }
     }
