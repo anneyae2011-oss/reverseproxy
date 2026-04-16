@@ -19,18 +19,19 @@ async function solvePoW(token) {
     },
     body: JSON.stringify({ target_path: '/api/v0/chat/completion' })
   });
-  const { data } = await challengeRes.json();
-  console.log('[PoW] challenge received, difficulty:', data?.difficulty);
-  const { algorithm, challenge, salt, difficulty } = data;
+  const json = await challengeRes.json();
+  const { algorithm, challenge, salt, difficulty, signature } = json.biz_data.challenge;
+  console.log('[PoW] difficulty:', difficulty);
 
-  // Brute force nonce (non-blocking)
+  // DeepSeekHashV1: find answer where first 4 bytes of sha3_256 as uint32 < (0xFFFFFFFF / difficulty)
+  const target = Math.floor(0xFFFFFFFF / difficulty);
   let answer = 0;
   await new Promise(resolve => {
     function step() {
-      for (let i = 0; i < 1000; i++) {
+      for (let i = 0; i < 5000; i++) {
         const hash = sha3_256(`${challenge}${salt}${answer}`);
-        const leading = hash.match(/^0*/)[0].length * 4;
-        if (leading >= difficulty) return resolve();
+        const val = parseInt(hash.slice(0, 8), 16);
+        if (val < target) return resolve();
         answer++;
       }
       setImmediate(step);
@@ -39,7 +40,7 @@ async function solvePoW(token) {
   });
 
   console.log(`[PoW] solved answer=${answer}`);
-  return JSON.stringify({ algorithm, challenge, salt, answer, signature: data.signature, target_path: '/api/v0/chat/completion' });
+  return JSON.stringify({ algorithm, challenge, salt, answer, signature, target_path: '/api/v0/chat/completion' });
 }
 const express = require('express');
 const bodyParser = require('body-parser');
