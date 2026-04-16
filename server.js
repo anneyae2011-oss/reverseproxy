@@ -20,6 +20,8 @@ async function solvePoW(token) {
     body: JSON.stringify({ target_path: '/api/v0/chat/completion' })
   });
   const json = await challengeRes.json();
+  console.log('[PoW] status:', challengeRes.status, 'biz_code:', json.biz_code, 'biz_data:', !!json.biz_data);
+  if (!json.biz_data) throw new Error('PoW challenge failed: ' + JSON.stringify(json));
   const { algorithm, challenge, salt, difficulty, signature } = json.biz_data.challenge;
   console.log('[PoW] difficulty:', difficulty);
 
