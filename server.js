@@ -121,6 +121,16 @@ function requireApiKey(req, res, next) {
   res.status(401).json({ error: 'Invalid or missing API key' });
 }
 
+// OpenAI-compatible /v1/models endpoint for clients like SillyTavern
+app.get('/api/proxy/v1/models', requireApiKey, (req, res) => {
+  const cfg = loadConfig();
+  const models = STATIC_MODELS[Object.keys(STATIC_MODELS).find(k => cfg.proxyTarget && cfg.proxyTarget.includes(k))] || [];
+  res.json({
+    object: 'list',
+    data: models.map(id => ({ id, object: 'model', created: 0, owned_by: 'proxy' }))
+  });
+});
+
 // Single unified API endpoint — all proxy requests go through here
 // POST /api/proxy
 // Headers: x-api-key: enyapeakshit
