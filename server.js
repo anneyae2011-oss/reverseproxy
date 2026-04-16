@@ -237,7 +237,9 @@ app.post('/api/proxy/v1/chat/completions', requireApiKey, async (req, res) => {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        console.log('[raw]', JSON.stringify(chunk.slice(0, 300)));
+        buffer += chunk;
         const lines = buffer.split('\n');
         buffer = lines.pop();
 
